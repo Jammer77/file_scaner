@@ -64,6 +64,13 @@ internal class Program
             bool alreadyScanned = loadedScanedFilesCollection.TryGetValue(fileName, out FileScanInfo? dbScanInfo);
             FileScanInfo? fileScanInfo = null;
 
+         
+                // Here we could check for changes since the file was last added to the database,
+                // such as differences in size or modification time.
+                // It's not difficult to implement, but the requirements do not include these features,
+                // and this is just a test project.
+           
+
             if (!alreadyScanned)
             {
                 fileScanInfo = await Task.Run(() => GetFileScanInfo(fileName), cancellationToken);
