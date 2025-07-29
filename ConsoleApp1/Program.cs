@@ -7,7 +7,7 @@ internal class Program
     private static async Task Main(string[] args)
     {
        
-        var folderForScan =  args.FirstOrDefault();
+        var folderForScan = args.FirstOrDefault();
 
         if (string.IsNullOrEmpty(folderForScan))
         {
