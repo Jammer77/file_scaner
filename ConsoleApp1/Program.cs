@@ -1,13 +1,14 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
+﻿global using System.Collections.Concurrent;
+global using System.Diagnostics;
+global using System.Threading.Channels;
 
 
-internal class Program
+internal partial class Program
 {
     private static async Task Main(string[] args)
     {
-       
-        var folderForScan =  args.FirstOrDefault();
+
+        var folderForScan = args.FirstOrDefault();
 
         if (string.IsNullOrEmpty(folderForScan))
         {
@@ -41,52 +42,37 @@ internal class Program
         }
 
         var stopwatch = Stopwatch.StartNew();
-
-        string[] fileNameCollection;
-        try
-        {
-            fileNameCollection
-            = Directory.GetFiles(folderForScan, "*", SearchOption.AllDirectories);
-            // If our utility has to work with folders that contain non-readable or protected
-            // files, we need to rewrite this using recursion + try-catch. 
-        }
-        catch (Exception ex)
-        {
-            Trace.TraceError($"Error during reading file info: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
-            return;
-        }
-
-
         var result = new ConcurrentDictionary<string, FileScanInfo>();
 
-        await Parallel.ForEachAsync(fileNameCollection, async (fileName, cancellationToken) =>
+        await Parallel.ForEachAsync(ScanFilesAsync(folderForScan), async (fileName, cancellationToken) =>
         {
             bool alreadyScanned = loadedScanedFilesCollection.TryGetValue(fileName, out FileScanInfo? dbScanInfo);
             FileScanInfo? fileScanInfo = null;
 
-         
-                // Here we could check for changes since the file was last added to the database,
-                // such as differences in size or modification time.
-                // It's not difficult to implement, but the requirements do not include these features,
-                // and this is just a test project.
+
+            // Here we could check for changes since the file was last added to the database,
+            // such as differences in size or modification time.
+            // It's not difficult to implement, but the requirements do not include these features,
+            // and this is just a test project.
+
            
-
             if (!alreadyScanned)
-            {
-                fileScanInfo = await Task.Run(() => GetFileScanInfo(fileName), cancellationToken);
-            }
-            else
-            {
-                fileScanInfo = dbScanInfo;
-                fileScanInfo.scanned++;
-                fileScanInfo.last_seen = DateTime.UtcNow;
-            }
+                {
+                    fileScanInfo = await Task.Run(() => GetFileScanInfo(fileName), cancellationToken);
+                }
+                else
+                {
+                    fileScanInfo = dbScanInfo;
+                    fileScanInfo.scanned++;
+                    fileScanInfo.last_seen = DateTime.UtcNow;
+                }
 
-            result.TryAdd(fileScanInfo.sha256, fileScanInfo);
+            if(fileScanInfo !=null)
+                result.TryAdd(fileScanInfo.sha256, fileScanInfo);
+
         });
 
         Console.WriteLine($"{result.Count} files scanned - total time: {stopwatch}");
-
 
         foreach (var fileScanInfo in result.Values)
         {
@@ -97,6 +83,7 @@ internal class Program
             else
                 context.hashes.Update(fileScanInfo);
         }
+
         try
         {
             context.SaveChanges();
@@ -106,30 +93,40 @@ internal class Program
             Trace.TraceError($"Database Error: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             return;
         }
+    }
 
-        FileScanInfo GetFileScanInfo(string fileName)
+    private static FileScanInfo? GetFileScanInfo(string fileName)
+    {
+        FileScanInfo? result = null;
+        try
         {
             using var fileStream = File.OpenRead(fileName);
             var fileInfo = new FileInfo(fileStream.Name);
-
-            // Tried parallelism here, but there are many obstacles:
-            // First — algorithms have different execution times.
-            // Second — FileStream is not concurrency-safe.
-            // I'm not sure it's a good idea to switch to MemoryStream,
-            // because, for example, a customer with 8GB RAM
-            //  might scan a Blu-ray video collection.
-
             string md5 = fileStream.CalculateMD5();
             string sha1 = fileStream.CalculateSHA1();
             string sha256 = fileStream.CalculateSHA256();
             long fileSize = fileInfo.Length;
             DateTime lastSeen = fileInfo.LastAccessTime;
-
-            return new FileScanInfo(fileName, md5, sha1, sha256, fileSize, lastSeen, 1);
-
+            result = new FileScanInfo(fileName, md5, sha1, sha256, fileSize, lastSeen, 1);
         }
+        catch (UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"Skiping {fileName} becoase have no access.");
+        }
+        catch (NotSupportedException)
+        {
+            Trace.WriteLine("Skiping {fileName} becoase file unsuppotted.");
+        }
+        catch (IOException e)
+        {
+            Trace.WriteLine($"Skiping {fileName} becoase IOExeption unsupported. Message: {e.Message}");
+        }
+        catch (Exception ex)
+        {
+             Trace.WriteLine($"Skipping {fileName} due to unexpected error: {ex.GetType().Name}: {ex.Message}");
+        }
+        return result;
     }
-
     private static void PrintUsage()
     {
 
