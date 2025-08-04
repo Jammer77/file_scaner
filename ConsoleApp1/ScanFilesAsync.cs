@@ -36,8 +36,8 @@ internal partial class Program
 
                         foreach (string dir in Directory.EnumerateDirectories(currentFolder))
                         {
-                            var fileInfo = new DirectoryInfo(dir);
-                            bool isHidden = (fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
+                            var directoryInfo = new DirectoryInfo(dir);
+                            bool isHidden = (directoryInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
                             if (!isHidden)
                                 folders.Enqueue(dir);
                         }
